@@ -1,0 +1,8 @@
+PySide6<7,>=6.6
+Pillow<13,>=10.0
+numpy<3,>=1.24
+opencv-python-headless<5,>=4.8
+
+[dev]
+pytest>=7.0
+pytest-qt>=4.2

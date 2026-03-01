@@ -1,0 +1,5 @@
+[console_scripts]
+sprite-splitter = sprite_splitter.main:main
+
+[gui_scripts]
+sprite-splitter-gui = sprite_splitter.main:main
