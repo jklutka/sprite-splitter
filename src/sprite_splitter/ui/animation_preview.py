@@ -137,7 +137,7 @@ class AnimationPreview(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setMinimumSize(280, 340)
+        self.setMinimumSize(280, 180)
         self.setMouseTracking(True)
 
         # layout: controls on top, preview canvas fills remaining space
@@ -435,4 +435,4 @@ class AnimationPreview(QWidget):
     # ── sizing ────────────────────────────────────────────────────────────
 
     def sizeHint(self) -> QSize:  # noqa: N802
-        return QSize(320, 480)
+        return QSize(320, 320)

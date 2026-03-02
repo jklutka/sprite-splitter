@@ -114,8 +114,46 @@ class SpriteProject(QObject):
         self._frames.append(frame)
         self.frames_changed.emit()
 
+    def clone_frame(self, frame_id: int) -> Optional[SpriteFrame]:
+        """Create and append a new frame instance copied from an existing frame."""
+        source = self.frame_by_id(frame_id)
+        if source is None:
+            return None
+
+        clone = SpriteFrame(
+            bbox=BBox(source.bbox.x, source.bbox.y, source.bbox.w, source.bbox.h),
+            image=source.image.copy() if source.image is not None else None,
+        )
+        self._frames.append(clone)
+        self.frames_changed.emit()
+        return clone
+
     def remove_frame(self, frame_id: int) -> None:
         self._frames = [f for f in self._frames if f.id != frame_id]
+        self.frames_changed.emit()
+
+    def reorder_frames(self, ordered_ids: list[int]) -> None:
+        """Reorder frames by ID and re-sequence named animation frames."""
+        if not ordered_ids:
+            return
+
+        by_id = {f.id: f for f in self._frames}
+        seen: set[int] = set()
+        reordered: list[SpriteFrame] = []
+
+        for frame_id in ordered_ids:
+            frame = by_id.get(frame_id)
+            if frame is None or frame_id in seen:
+                continue
+            reordered.append(frame)
+            seen.add(frame_id)
+
+        for frame in self._frames:
+            if frame.id not in seen:
+                reordered.append(frame)
+
+        self._frames = reordered
+        self._renumber_named_sequences()
         self.frames_changed.emit()
 
     def update_frame(self, frame_id: int, **kwargs) -> None:  # noqa: ANN003
@@ -136,6 +174,22 @@ class SpriteProject(QObject):
                 kw["frame_number"] = idx + 1
             self.update_frame(fid, **kw)
         self.frames_changed.emit()
+
+    def _renumber_named_sequences(self) -> None:
+        """Assign contiguous frame_number values per named animation sequence."""
+        counts: dict[tuple[str, str, str, str], int] = {}
+        for frame in self._frames:
+            if not frame.is_fully_named:
+                continue
+            key = (
+                frame.part1,
+                frame.part2,
+                frame.effective_verb,
+                frame.direction.value if frame.direction else "",
+            )
+            next_number = counts.get(key, 0) + 1
+            counts[key] = next_number
+            frame.frame_number = next_number
 
     # ── project persistence ───────────────────────────────────────────────────
 

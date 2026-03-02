@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from sprite_splitter.ui.main_window import MainWindow
+from sprite_splitter.ui.app_assets import load_logo_icon
 
 
 def main() -> None:
@@ -19,6 +20,7 @@ def main() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName("Sprite Splitter")
     app.setOrganizationName("SpriteSplitter")
+    app.setWindowIcon(load_logo_icon())
 
     # Apply a dark palette for a game-dev-friendly look
     _apply_dark_theme(app)

@@ -23,8 +23,11 @@ from sprite_splitter.models.sprite_frame import (
     Verb,
     reset_frame_ids,
 )
+from sprite_splitter.models.sprite_project import SpriteProject
 from sprite_splitter.naming.convention import (
     auto_number_frames,
+    find_duplicate_filenames,
+    find_duplicate_relative_paths,
     generate_filename,
     generate_relative_path,
 )
@@ -263,3 +266,103 @@ class TestExport:
         assert "hero-base-walking-east" in manifest["animations"]
         assert len(manifest["animations"]["hero-base-walking-east"]) == 2
         assert manifest["meta"]["app"] == "sprite-splitter"
+
+
+class TestProjectFrameReorder:
+    def setup_method(self):
+        reset_frame_ids()
+
+    def _named_frame(self, frame_number: int) -> SpriteFrame:
+        return SpriteFrame(
+            bbox=BBox(0, 0, 32, 32),
+            part1="hero",
+            part2="base",
+            verb=Verb.WALKING,
+            direction=Direction.EAST,
+            frame_number=frame_number,
+        )
+
+    def test_reorder_swaps_sequence_numbers(self):
+        project = SpriteProject()
+        f1 = self._named_frame(1)
+        f2 = self._named_frame(2)
+        f3 = self._named_frame(3)
+        project.set_frames([f1, f2, f3])
+
+        project.reorder_frames([f1.id, f3.id, f2.id])
+
+        ordered = project.frames
+        assert [f.id for f in ordered] == [f1.id, f3.id, f2.id]
+        assert f1.frame_number == 1
+        assert f3.frame_number == 2
+        assert f2.frame_number == 3
+
+    def test_reorder_numbers_each_group_independently(self):
+        project = SpriteProject()
+        e1 = self._named_frame(1)
+        e2 = self._named_frame(2)
+        s1 = SpriteFrame(
+            bbox=BBox(0, 0, 32, 32),
+            part1="hero",
+            part2="base",
+            verb=Verb.WALKING,
+            direction=Direction.SOUTH,
+            frame_number=7,
+        )
+        project.set_frames([e1, e2, s1])
+
+        project.reorder_frames([e2.id, s1.id, e1.id])
+
+        assert e2.frame_number == 1
+        assert e1.frame_number == 2
+        assert s1.frame_number == 1
+
+
+class TestProjectFrameClone:
+    def setup_method(self):
+        reset_frame_ids()
+
+    def test_clone_frame_creates_new_instance(self):
+        project = SpriteProject()
+        img = np.zeros((8, 8, 4), dtype=np.uint8)
+        img[:, :] = [10, 20, 30, 255]
+        source = SpriteFrame(bbox=BBox(1, 2, 8, 8), image=img)
+        project.set_frames([source])
+
+        clone = project.clone_frame(source.id)
+
+        assert clone is not None
+        assert clone.id != source.id
+        assert clone.bbox == source.bbox
+        assert clone.image is not None
+        assert source.image is not None
+        assert np.array_equal(clone.image, source.image)
+        assert clone.image is not source.image
+        assert len(project.frames) == 2
+
+
+class TestDuplicateNameDetection:
+    def setup_method(self):
+        reset_frame_ids()
+
+    def _frame(self, frame_number: int) -> SpriteFrame:
+        return SpriteFrame(
+            bbox=BBox(0, 0, 32, 32),
+            part1="hero",
+            part2="base",
+            verb=Verb.WALKING,
+            direction=Direction.EAST,
+            frame_number=frame_number,
+        )
+
+    def test_duplicate_relative_paths(self):
+        f1 = self._frame(2)
+        f2 = self._frame(2)
+        dup = find_duplicate_relative_paths([f1, f2], use_folders=False)
+        assert dup == {"hero-base-walking-east-002.png": 2}
+
+    def test_duplicate_filenames(self):
+        f1 = self._frame(4)
+        f2 = self._frame(4)
+        dup = find_duplicate_filenames([f1, f2])
+        assert dup == {"hero-base-walking-east-004.png": 2}

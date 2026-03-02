@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal, QSize, QByteArray, QMimeData
-from PySide6.QtGui import QColor, QDrag, QIcon, QImage, QPixmap
+from PySide6.QtGui import QColor, QDrag, QIcon, QImage, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
@@ -44,6 +44,7 @@ class FramePanel(QWidget):
     frame_clicked = Signal(int)          # frame_id
     assign_requested = Signal(list)      # list[int] – selected frame ids
     delete_requested = Signal(list)      # list[int] – selected frame ids
+    reorder_requested = Signal(list)     # list[int] – ordered frame ids
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -60,8 +61,15 @@ class FramePanel(QWidget):
         self._list.setIconSize(QSize(THUMB_SIZE, THUMB_SIZE))
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._list.setDragEnabled(True)
-        self._list.setDefaultDropAction(Qt.DropAction.CopyAction)
+        self._list.setAcceptDrops(True)
+        self._list.setDropIndicatorShown(True)
+        self._list.setDragDropMode(QAbstractItemView.DragDropMode.DragDrop)
+        self._list.setDragDropOverwriteMode(False)
+        self._list.setDefaultDropAction(Qt.DropAction.MoveAction)
         self._list.currentItemChanged.connect(self._on_current_changed)
+        self._list.order_changed.connect(
+            lambda: self.reorder_requested.emit(self._ordered_ids())
+        )
         self._layout.addWidget(self._list, stretch=1)
 
         # Action buttons
@@ -70,13 +78,24 @@ class FramePanel(QWidget):
         self._btn_assign.clicked.connect(self._on_assign)
         self._btn_delete = QPushButton("Delete")
         self._btn_delete.clicked.connect(self._on_delete)
+        self._btn_up = QPushButton("Move Up")
+        self._btn_up.clicked.connect(lambda: self._move_current(-1))
+        self._btn_down = QPushButton("Move Down")
+        self._btn_down.clicked.connect(lambda: self._move_current(1))
         btn_row.addWidget(self._btn_assign)
         btn_row.addWidget(self._btn_delete)
+        btn_row.addWidget(self._btn_up)
+        btn_row.addWidget(self._btn_down)
         self._layout.addLayout(btn_row)
 
         # Count label
         self._count_label = QLabel("0 frames")
         self._layout.addWidget(self._count_label)
+
+        self._shortcut_move_up = QShortcut(QKeySequence("Alt+Up"), self)
+        self._shortcut_move_up.activated.connect(lambda: self._move_current(-1))
+        self._shortcut_move_down = QShortcut(QKeySequence("Alt+Down"), self)
+        self._shortcut_move_down.activated.connect(lambda: self._move_current(1))
 
         self._frame_map: dict[int, QListWidgetItem] = {}
 
@@ -147,11 +166,39 @@ class FramePanel(QWidget):
         if ids:
             self.delete_requested.emit(ids)
 
+    def _ordered_ids(self) -> list[int]:
+        ids: list[int] = []
+        for row in range(self._list.count()):
+            item = self._list.item(row)
+            if item is None:
+                continue
+            fid = item.data(Qt.ItemDataRole.UserRole)
+            if fid is not None:
+                ids.append(fid)
+        return ids
+
+    def _move_current(self, offset: int) -> None:
+        current_row = self._list.currentRow()
+        if current_row < 0:
+            return
+
+        target_row = current_row + offset
+        if target_row < 0 or target_row >= self._list.count():
+            return
+
+        item = self._list.takeItem(current_row)
+        self._list.insertItem(target_row, item)
+        self._list.setCurrentItem(item)
+        item.setSelected(True)
+        self.reorder_requested.emit(self._ordered_ids())
+
 
 # ── Draggable list widget ────────────────────────────────────────────────────
 
 class _DraggableFrameList(QListWidget):
     """QListWidget subclass that initiates a drag carrying frame IDs."""
+
+    order_changed = Signal()
 
     def startDrag(self, supportedActions) -> None:  # noqa: N802
         items = self.selectedItems()
@@ -177,4 +224,13 @@ class _DraggableFrameList(QListWidget):
         if not icon.isNull():
             drag.setPixmap(icon.pixmap(THUMB_SIZE, THUMB_SIZE))
 
-        drag.exec(Qt.DropAction.CopyAction)
+        drag.exec(
+            Qt.DropAction.MoveAction | Qt.DropAction.CopyAction,
+            Qt.DropAction.MoveAction,
+        )
+
+    def dropEvent(self, event) -> None:  # noqa: N802
+        internal_move = event.source() is self
+        super().dropEvent(event)
+        if internal_move and event.isAccepted():
+            self.order_changed.emit()

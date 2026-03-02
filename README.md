@@ -84,8 +84,12 @@ python -m sprite_splitter.main
 4. Choose **Auto-detect (contour)** or **Grid** mode in the Settings panel
 5. Click **Detect Sprites** – frames appear as coloured overlays on the canvas
 6. Select frames in the right sidebar → click **Assign Name…** → fill in part1, part2, verb, direction
-7. **File → Export Sprites…** → choose output folder → OK
-8. Individual transparent PNGs + `manifest.json` are written to the output folder
+7. In the workflow **Sort into Frame Sequences** step, you can assign the same source frame multiple times (it stays available after assignment)
+8. Use **Move Up / Move Down** or drag-and-drop in the right sidebar to reorder frame sequence (numbers auto-adjust)
+9. **File → Export Sprites…** → choose output folder → OK
+10. Individual transparent PNGs + `manifest.json` are written to the output folder
+
+> Note: Export now blocks if two sequence entries would produce the same output filename.
 
 ### Keyboard Shortcuts
 
@@ -95,6 +99,11 @@ python -m sprite_splitter.main
 | Ctrl+S | Save project |
 | Ctrl+E | Export sprites |
 | Ctrl+N | Assign name to selected frames |
+| Ctrl+P | Toggle animation preview panel |
+| Ctrl+D | Toggle direction panel |
+| Ctrl+Shift+Up | Expand animation preview |
+| Ctrl+Shift+Down | Shrink animation preview |
+| Alt+Up / Alt+Down | Move selected frame up/down in sequence |
 | Delete | Remove selected frames |
 | Ctrl+Scroll | Zoom canvas |
 | Middle-click drag | Pan canvas |
@@ -153,6 +162,16 @@ pytest tests/ -v
 # Run the app without installing
 python -m sprite_splitter.main
 ```
+
+## Branding / App Logo
+
+To use a custom app logo (window icon + large About dialog image), place this file in the project:
+
+```
+src/sprite_splitter/assets/app_logo.png
+```
+
+Recommended: square PNG at 512×512 or larger.
 
 ## License
 

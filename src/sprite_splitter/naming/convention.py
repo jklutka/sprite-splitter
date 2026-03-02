@@ -71,3 +71,28 @@ def auto_number_frames(
     for _k, group in groupby(frames, key=_key):
         for idx, f in enumerate(group, start=1):
             f.frame_number = idx
+
+
+def find_duplicate_relative_paths(
+    frames: list[SpriteFrame],
+    use_folders: bool = False,
+    extension: str = ".png",
+) -> dict[str, int]:
+    """Return duplicate export relative paths and their counts."""
+    counts: dict[str, int] = {}
+    for frame in frames:
+        rel = generate_relative_path(frame, use_folders=use_folders, extension=extension)
+        counts[rel] = counts.get(rel, 0) + 1
+    return {path: count for path, count in counts.items() if count > 1}
+
+
+def find_duplicate_filenames(
+    frames: list[SpriteFrame],
+    extension: str = ".png",
+) -> dict[str, int]:
+    """Return duplicate flat filenames and their counts."""
+    counts: dict[str, int] = {}
+    for frame in frames:
+        name = generate_filename(frame, extension=extension)
+        counts[name] = counts.get(name, 0) + 1
+    return {name: count for name, count in counts.items() if count > 1}

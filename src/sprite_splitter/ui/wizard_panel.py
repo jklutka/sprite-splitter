@@ -4,8 +4,8 @@ Step 1 – **Review**:   Thumbnail grid with checkboxes to accept / reject
                         false-positive detections.
 Step 2 – **Identity**: Fill *part1* (entity name) and *part2* (variant) once.
 Step 3 – **Sort**:     Pick a verb, select unassigned frames, click a
-                        compass direction to assign.  Frame numbers are
-                        auto-incremented per direction group.
+                        compass direction to assign.  Frames can be reused
+                        multiple times in a sequence.
 """
 
 from __future__ import annotations
@@ -329,7 +329,7 @@ class _IdentityPage(QWidget):
 # ══════════════════════════════════════════════════════════════════════════════
 
 class _SortPage(QWidget):
-    """Verb selector  +  unassigned frame list  +  8-direction compass buttons."""
+    """Verb selector  +  available frame list  +  8-direction compass buttons."""
 
     frames_assigned = Signal(object, list)  # Direction, list[int] frame_ids
 
@@ -343,8 +343,9 @@ class _SortPage(QWidget):
         root.addWidget(title)
 
         desc = QLabel(
-            "Select unassigned frames, pick a verb, then click a compass "
-            "direction to assign.  Frame numbers auto-increment per group."
+            "Select frames, pick a verb, then click a compass "
+            "direction to assign. Assigned frames stay available so you can "
+            "reuse the same source image multiple times in a sequence."
         )
         desc.setStyleSheet("color: #999; font-size: 12px; margin-bottom: 8px;")
         desc.setWordWrap(True)
@@ -386,11 +387,12 @@ class _SortPage(QWidget):
         # ── body: frame list + compass ────────────────────────────────────
         body = QHBoxLayout()
 
-        # Left: unassigned frames list
+        # Left: available frames list
         left = QVBoxLayout()
-        lh = QLabel("Unassigned Frames")
+        lh = QLabel("Available Frames")
         lh.setStyleSheet("color: #aaa; font-size: 12px; font-weight: bold;")
         left.addWidget(lh)
+        self._list_title = lh
 
         self._frame_list = QListWidget()
         self._frame_list.setIconSize(QSize(48, 48))
@@ -481,15 +483,18 @@ class _SortPage(QWidget):
 
     def _refresh(self) -> None:
         self._frame_list.clear()
-        unassigned = [f for f in self._all_frames if f.direction is None]
-        for f in unassigned:
+        for f in self._all_frames:
             item = QListWidgetItem()
-            item.setText(f"Frame #{f.id}  ({f.bbox.w}×{f.bbox.h})")
+            status = "unassigned" if f.direction is None else "assigned"
+            item.setText(f"Frame #{f.id}  ({f.bbox.w}×{f.bbox.h})  ·  {status}")
             item.setData(Qt.ItemDataRole.UserRole, f.id)
             if f.image is not None:
                 item.setIcon(QIcon(_thumb_pixmap(f.image, 48)))
             self._frame_list.addItem(item)
-        self._unassigned_lbl.setText(f"{len(unassigned)} unassigned")
+        unassigned_count = sum(1 for f in self._all_frames if f.direction is None)
+        self._unassigned_lbl.setText(
+            f"{len(self._all_frames)} available  ·  {unassigned_count} unassigned"
+        )
 
         # Button & summary update
         counts: dict[Direction, int] = {d: 0 for d in Direction}

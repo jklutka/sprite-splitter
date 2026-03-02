@@ -8,14 +8,20 @@ from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QDockWidget,
     QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QVBoxLayout,
     QMainWindow,
     QMessageBox,
+    QPushButton,
     QStackedWidget,
     QStatusBar,
 )
 
+from sprite_splitter import __version__, __build_date__
 from sprite_splitter.detection.background import detect_background_color
 from sprite_splitter.detection.contour import ContourDetector
 from sprite_splitter.detection.grid import GridDetector
@@ -23,6 +29,8 @@ from sprite_splitter.export.manifest import write_manifest
 from sprite_splitter.export.png_exporter import export_all
 from sprite_splitter.models.sprite_frame import BBox, Direction, SpriteFrame, Verb, reset_frame_ids
 from sprite_splitter.models.sprite_project import SpriteProject
+from sprite_splitter.naming.convention import find_duplicate_filenames, find_duplicate_relative_paths
+from sprite_splitter.ui.app_assets import load_logo_icon, load_logo_pixmap
 from sprite_splitter.ui.animation_preview import AnimationPreview
 from sprite_splitter.ui.canvas_view import CanvasView
 from sprite_splitter.ui.direction_panel import DirectionPanel
@@ -38,7 +46,8 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Sprite Splitter")
+        self.setWindowTitle(f"Sprite Splitter  v{__version__}")
+        self.setWindowIcon(load_logo_icon())
         self.resize(1280, 800)
 
         # ── model ─────────────────────────────────────────────────────────
@@ -172,6 +181,16 @@ class MainWindow(QMainWindow):
         act_preview.toggled.connect(self._anim_dock.setVisible)
         self._anim_dock.visibilityChanged.connect(act_preview.setChecked)
         view_menu.addAction(act_preview)
+        
+        act_preview_expand = QAction("Expand Preview", self)
+        act_preview_expand.setShortcut(QKeySequence("Ctrl+Shift+Up"))
+        act_preview_expand.triggered.connect(lambda: self._resize_preview_dock(80))
+        view_menu.addAction(act_preview_expand)
+        
+        act_preview_shrink = QAction("Shrink Preview", self)
+        act_preview_shrink.setShortcut(QKeySequence("Ctrl+Shift+Down"))
+        act_preview_shrink.triggered.connect(lambda: self._resize_preview_dock(-80))
+        view_menu.addAction(act_preview_shrink)
 
         act_dir_panel = QAction("&Direction Panel", self)
         act_dir_panel.setShortcut(QKeySequence("Ctrl+D"))
@@ -187,10 +206,64 @@ class MainWindow(QMainWindow):
         act_wizard.setShortcut(QKeySequence("Ctrl+W"))
         act_wizard.triggered.connect(lambda: self._start_wizard())
         view_menu.addAction(act_wizard)
+        # Help
+        help_menu = mb.addMenu("&Help")
 
+        act_about = QAction("&About Sprite Splitter", self)
+        act_about.triggered.connect(self._show_about)
+        help_menu.addAction(act_about)
     # ==================================================================
     # Signal wiring
     # ==================================================================
+
+    def _show_about(self) -> None:
+        build = __build_date__ if __build_date__ != "dev" else "local dev build"
+        dlg = QDialog(self)
+        dlg.setWindowTitle("About Sprite Splitter")
+        dlg.setWindowIcon(load_logo_icon())
+        dlg.setModal(True)
+        dlg.setMinimumWidth(560)
+
+        root = QVBoxLayout(dlg)
+        root.setContentsMargins(18, 16, 18, 14)
+        root.setSpacing(12)
+
+        top = QHBoxLayout()
+        logo = QLabel()
+        logo.setPixmap(load_logo_pixmap(220))
+        logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        top.addWidget(logo)
+
+        about_text = QLabel(
+            "<h2>Sprite Splitter</h2>"
+            "<p>Detect, organize, and export sprite frames.</p>"
+            "<p><b>Author:</b> Justin Klutka</p>"
+            "<p><b>Logo:</b> © Logo Creator / Source (used with permission)</p>"
+        )
+        about_text.setWordWrap(True)
+        about_text.setTextFormat(Qt.TextFormat.RichText)
+        top.addWidget(about_text, stretch=1)
+
+        root.addLayout(top)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch(1)
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dlg.accept)
+        close_btn.setDefault(True)
+        btn_row.addWidget(close_btn)
+        root.addLayout(btn_row)
+
+        dlg.exec()
+
+    def _resize_preview_dock(self, delta_px: int) -> None:
+        """Resize animation preview dock vertically by a pixel delta."""
+        if not self._anim_dock.isVisible():
+            self._anim_dock.setVisible(True)
+
+        current = self._anim_dock.height()
+        target = max(140, current + delta_px)
+        self.resizeDocks([self._anim_dock], [target], Qt.Orientation.Vertical)
 
     def _connect_signals(self) -> None:
         proj = self._project
@@ -208,6 +281,7 @@ class MainWindow(QMainWindow):
         self._frame_panel.frame_clicked.connect(self._canvas.highlight_frame)
         self._frame_panel.assign_requested.connect(self._show_naming_dialog)
         self._frame_panel.delete_requested.connect(self._delete_frames)
+        self._frame_panel.reorder_requested.connect(self._on_frame_reordered)
 
         # Canvas
         self._canvas.frame_selected.connect(self._frame_panel.select_frame)
@@ -363,7 +437,7 @@ class MainWindow(QMainWindow):
             self._project.remove_frame(fid)
 
     def _on_wizard_assign(self, direction, frame_ids: list[int]) -> None:
-        """Apply full metadata (part1, part2, verb, direction, frame_number)."""
+        """Apply metadata for wizard assignment, cloning reused source frames."""
         if self._wizard is None or not isinstance(direction, Direction):
             return
 
@@ -387,8 +461,19 @@ class MainWindow(QMainWindow):
         start = existing + 1
 
         for idx, fid in enumerate(frame_ids):
+            target_id = fid
+            frame = self._project.frame_by_id(fid)
+            if frame is None:
+                continue
+
+            if frame.direction is not None:
+                clone = self._project.clone_frame(fid)
+                if clone is None:
+                    continue
+                target_id = clone.id
+
             self._project.update_frame(
-                fid,
+                target_id,
                 part1=part1,
                 part2=part2,
                 verb=verb_enum,
@@ -455,6 +540,10 @@ class MainWindow(QMainWindow):
     def _delete_frames(self, frame_ids: list[int]) -> None:
         for fid in frame_ids:
             self._project.remove_frame(fid)
+
+    def _on_frame_reordered(self, ordered_ids: list[int]) -> None:
+        self._project.reorder_frames(ordered_ids)
+        self.statusBar().showMessage("Updated frame sequence order.")
 
     # ── manual rect ───────────────────────────────────────────────────────
 
@@ -530,6 +619,38 @@ class MainWindow(QMainWindow):
 
         out_dir = dlg.output_dir
         settings = self._project.settings
+
+        duplicate_paths = find_duplicate_relative_paths(to_export, use_folders=dlg.use_folders)
+        if duplicate_paths:
+            sample = list(sorted(duplicate_paths.keys()))[:5]
+            details = "\n".join(f"- {path}" for path in sample)
+            extra = "" if len(duplicate_paths) <= 5 else "\n- ..."
+            QMessageBox.warning(
+                self,
+                "Export Conflict",
+                "Export aborted because multiple sequence entries map to the "
+                "same output file path:\n\n"
+                f"{details}{extra}\n\n"
+                "Adjust frame numbering or naming so every exported frame has "
+                "a unique filename.",
+            )
+            return
+
+        if dlg.export_manifest:
+            duplicate_names = find_duplicate_filenames(to_export)
+            if duplicate_names:
+                sample = list(sorted(duplicate_names.keys()))[:5]
+                details = "\n".join(f"- {name}" for name in sample)
+                extra = "" if len(duplicate_names) <= 5 else "\n- ..."
+                QMessageBox.warning(
+                    self,
+                    "Manifest Conflict",
+                    "Export aborted because manifest frame names would collide:\n\n"
+                    f"{details}{extra}\n\n"
+                    "Ensure each sequence entry resolves to a unique output "
+                    "filename before exporting.",
+                )
+                return
 
         try:
             paths = export_all(
