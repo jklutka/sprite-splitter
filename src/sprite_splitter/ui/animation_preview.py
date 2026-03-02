@@ -168,7 +168,7 @@ class AnimationPreview(QWidget):
 
         self._zoom_spin = QSpinBox()
         self._zoom_spin.setRange(1, 16)
-        self._zoom_spin.setValue(4)
+        self._zoom_spin.setValue(1)
         self._zoom_spin.setSuffix("×")
         self._zoom_spin.valueChanged.connect(self._request_repaint)
         ctrl.addRow("Zoom:", self._zoom_spin)

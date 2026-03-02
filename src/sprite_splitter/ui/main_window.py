@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QMainWindow,
     QMessageBox,
+    QStackedWidget,
     QStatusBar,
 )
 
@@ -20,7 +21,7 @@ from sprite_splitter.detection.contour import ContourDetector
 from sprite_splitter.detection.grid import GridDetector
 from sprite_splitter.export.manifest import write_manifest
 from sprite_splitter.export.png_exporter import export_all
-from sprite_splitter.models.sprite_frame import BBox, SpriteFrame, reset_frame_ids
+from sprite_splitter.models.sprite_frame import BBox, Direction, SpriteFrame, Verb, reset_frame_ids
 from sprite_splitter.models.sprite_project import SpriteProject
 from sprite_splitter.ui.animation_preview import AnimationPreview
 from sprite_splitter.ui.canvas_view import CanvasView
@@ -29,6 +30,7 @@ from sprite_splitter.ui.export_dialog import ExportDialog
 from sprite_splitter.ui.frame_panel import FramePanel
 from sprite_splitter.ui.naming_dialog import NamingDialog
 from sprite_splitter.ui.settings_panel import SettingsPanel
+from sprite_splitter.ui.wizard_panel import WorkflowWizard
 
 
 class MainWindow(QMainWindow):
@@ -42,9 +44,16 @@ class MainWindow(QMainWindow):
         # ── model ─────────────────────────────────────────────────────────
         self._project = SpriteProject(self)
 
-        # ── central canvas ────────────────────────────────────────────────
+        # ── central stacked widget (canvas ↔ wizard) ─────────────────────
+        self._central_stack = QStackedWidget(self)
         self._canvas = CanvasView(self)
-        self.setCentralWidget(self._canvas)
+        self._central_stack.addWidget(self._canvas)
+        self.setCentralWidget(self._central_stack)
+
+        # Wizard is created on demand after detection
+        self._wizard: WorkflowWizard | None = None
+        self._wizard_part1: str = ""
+        self._wizard_part2: str = ""
 
         # ── left dock: settings ───────────────────────────────────────────
         self._settings_panel = SettingsPanel()
@@ -172,6 +181,13 @@ class MainWindow(QMainWindow):
         self._dir_dock.visibilityChanged.connect(act_dir_panel.setChecked)
         view_menu.addAction(act_dir_panel)
 
+        view_menu.addSeparator()
+
+        act_wizard = QAction("&Workflow Wizard…", self)
+        act_wizard.setShortcut(QKeySequence("Ctrl+W"))
+        act_wizard.triggered.connect(lambda: self._start_wizard())
+        view_menu.addAction(act_wizard)
+
     # ==================================================================
     # Signal wiring
     # ==================================================================
@@ -284,6 +300,10 @@ class MainWindow(QMainWindow):
         self._project.set_frames(frames)
         self.statusBar().showMessage(f"Detected {len(frames)} sprites.")
 
+        # Start the workflow wizard if we got results
+        if frames:
+            self._start_wizard()
+
     def _auto_bg_color(self) -> None:
         if self._project.source_array is None:
             return
@@ -292,6 +312,110 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             f"Auto-detected background: RGB({color[0]}, {color[1]}, {color[2]})"
         )
+
+    # ── workflow wizard ───────────────────────────────────────────────────
+
+    def _start_wizard(self) -> None:
+        """Create and show the three-step workflow wizard."""
+        if self._wizard is not None:
+            return  # already active
+
+        self._wizard = WorkflowWizard(self)
+        self._central_stack.addWidget(self._wizard)
+        self._central_stack.setCurrentWidget(self._wizard)
+
+        # Wire wizard signals
+        self._wizard.review_completed.connect(self._on_wizard_review)
+        self._wizard.frames_assigned.connect(self._on_wizard_assign)
+        self._wizard.wizard_finished.connect(self._on_wizard_finish)
+        self._wizard.wizard_cancelled.connect(self._on_wizard_cancel)
+
+        # Hide the direction dock during the wizard (wizard has its own UI)
+        self._dir_dock.hide()
+
+        self._wizard.start(self._project.frames)
+        self.statusBar().showMessage(
+            "Workflow: review detected sprites, then assign metadata."
+        )
+
+    def _close_wizard(self) -> None:
+        """Tear down the wizard and restore the canvas view."""
+        if self._wizard is None:
+            return
+        self._central_stack.setCurrentWidget(self._canvas)
+        self._central_stack.removeWidget(self._wizard)
+        self._wizard.deleteLater()
+        self._wizard = None
+
+        # Restore direction dock
+        self._dir_dock.show()
+
+        # Refresh all views to reflect current project state
+        if self._project.source_array is not None:
+            self._canvas.load_image(self._project.source_array)
+        self._on_frames_changed()
+        self._refresh_animation_preview()
+        self._refresh_direction_panel()
+
+    def _on_wizard_review(self, rejected_ids: list[int]) -> None:
+        """Remove rejected frames from the project."""
+        for fid in rejected_ids:
+            self._project.remove_frame(fid)
+
+    def _on_wizard_assign(self, direction, frame_ids: list[int]) -> None:
+        """Apply full metadata (part1, part2, verb, direction, frame_number)."""
+        if self._wizard is None or not isinstance(direction, Direction):
+            return
+
+        part1 = self._wizard.part1
+        part2 = self._wizard.part2
+        verb_text = self._wizard.current_verb
+
+        # Resolve verb enum or custom
+        verb_enum = None
+        custom_verb = ""
+        try:
+            verb_enum = Verb(verb_text)
+        except ValueError:
+            custom_verb = verb_text
+
+        # Auto-number: count existing frames in this verb+direction group
+        existing = sum(
+            1 for f in self._project.frames
+            if f.direction == direction and f.effective_verb == verb_text
+        )
+        start = existing + 1
+
+        for idx, fid in enumerate(frame_ids):
+            self._project.update_frame(
+                fid,
+                part1=part1,
+                part2=part2,
+                verb=verb_enum,
+                custom_verb=custom_verb,
+                direction=direction,
+                frame_number=start + idx,
+            )
+        self._project.frames_changed.emit()
+
+        n = len(frame_ids)
+        self.statusBar().showMessage(
+            f"Assigned {n} frame{'s' if n != 1 else ''} → "
+            f"{part1}-{part2}-{verb_text}-{direction.value}"
+        )
+
+        # Refresh the wizard's sort page with updated model
+        self._wizard.refresh_sort_page(self._project.frames)
+
+    def _on_wizard_finish(self) -> None:
+        self._close_wizard()
+        self.statusBar().showMessage(
+            "Workflow complete — frames are ready for export."
+        )
+
+    def _on_wizard_cancel(self) -> None:
+        self._close_wizard()
+        self.statusBar().showMessage("Workflow cancelled.")
 
     # ── naming ────────────────────────────────────────────────────────────
 

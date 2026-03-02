@@ -125,6 +125,12 @@ def _apply_dark_theme(app: QApplication) -> None:
             background: #555;
             border-radius: 3px;
         }
+        QStackedWidget {
+            background: #2b2b2b;
+        }
+        QScrollArea {
+            background: #2b2b2b;
+        }
     """)
 
 
