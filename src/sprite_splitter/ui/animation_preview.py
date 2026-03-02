@@ -30,7 +30,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QSlider,
-    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -166,12 +165,11 @@ class AnimationPreview(QWidget):
         fps_row.addWidget(self._fps_label)
         ctrl.addRow("Speed:", fps_row)
 
-        self._zoom_spin = QSpinBox()
-        self._zoom_spin.setRange(1, 16)
-        self._zoom_spin.setValue(1)
-        self._zoom_spin.setSuffix("×")
-        self._zoom_spin.valueChanged.connect(self._request_repaint)
-        ctrl.addRow("Zoom:", self._zoom_spin)
+        self._zoom_combo = QComboBox()
+        self._zoom_combo.addItems(["100%", "75%", "50%", "25%"])
+        self._zoom_combo.setCurrentIndex(0)
+        self._zoom_combo.currentIndexChanged.connect(self._request_repaint)
+        ctrl.addRow("Scale:", self._zoom_combo)
 
         root.addLayout(ctrl)
 
@@ -272,6 +270,11 @@ class AnimationPreview(QWidget):
 
     def _request_repaint(self) -> None:
         self.update()
+
+    def _zoom_scale(self) -> float:
+        """Return the current zoom as a float multiplier (0.25 – 1.0)."""
+        _SCALES = {0: 1.0, 1: 0.75, 2: 0.5, 3: 0.25}
+        return _SCALES.get(self._zoom_combo.currentIndex(), 1.0)
 
     # ── pixmap cache ──────────────────────────────────────────────────────
 
@@ -394,9 +397,9 @@ class AnimationPreview(QWidget):
         if frames:
             idx = self._current_frame_idx % len(frames)
             pm = frames[idx]
-            zoom = self._zoom_spin.value()
-            sw = pm.width() * zoom
-            sh = pm.height() * zoom
+            scale = self._zoom_scale()
+            sw = pm.width() * scale
+            sh = pm.height() * scale
             target = QRectF(center.x() - sw / 2, center.y() - sh / 2, sw, sh)
             # Nearest-neighbour scaling for pixel art
             p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
