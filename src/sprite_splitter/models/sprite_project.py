@@ -175,9 +175,20 @@ class SpriteProject(QObject):
             self.update_frame(fid, **kw)
         self.frames_changed.emit()
 
-    def _renumber_named_sequences(self) -> None:
+    def normalize_named_sequence_numbers(self) -> bool:
+        """Normalize named sequence numbers using current frame order.
+
+        Returns ``True`` if any ``frame_number`` value changed.
+        """
+        changed = self._renumber_named_sequences()
+        if changed:
+            self.frames_changed.emit()
+        return changed
+
+    def _renumber_named_sequences(self) -> bool:
         """Assign contiguous frame_number values per named animation sequence."""
         counts: dict[tuple[str, str, str, str], int] = {}
+        changed = False
         for frame in self._frames:
             if not frame.is_fully_named:
                 continue
@@ -189,7 +200,10 @@ class SpriteProject(QObject):
             )
             next_number = counts.get(key, 0) + 1
             counts[key] = next_number
+            if frame.frame_number != next_number:
+                changed = True
             frame.frame_number = next_number
+        return changed
 
     # ── project persistence ───────────────────────────────────────────────────
 

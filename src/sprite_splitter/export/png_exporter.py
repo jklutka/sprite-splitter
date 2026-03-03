@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 from PIL import Image
 
 from sprite_splitter.detection.background import apply_transparency
@@ -48,7 +47,6 @@ def export_all(
     output_dir.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
     for frame in frames:
-        if frame.image is not None:
-            p = export_frame(frame, output_dir, bg_color, tolerance, use_folders)
-            paths.append(p)
+        p = export_frame(frame, output_dir, bg_color, tolerance, use_folders)
+        paths.append(p)
     return paths

@@ -16,7 +16,7 @@ A desktop utility to **detect**, **organize**, **name**, and **export** individu
 | **Visual canvas** | Zoom (Ctrl+scroll), pan (middle-click), overlay rectangles for detected frames |
 | **Name organizer** | Structured naming: `{part1}-{part2}-{verb}-{direction}-{NNN}.png` |
 | **Batch assignment** | Select multiple frames → assign verb/direction → auto-number |
-| **JSON manifest** | TexturePacker-compatible JSON Hash + custom `animations` block |
+| **JSON manifest** | Character-centric JSON with `character`, `assets`, and `sequence` blocks |
 | **Project save/load** | Persist work-in-progress as `.spriteproj` files |
 
 ## Naming Convention
@@ -87,9 +87,9 @@ python -m sprite_splitter.main
 7. In the workflow **Sort into Frame Sequences** step, you can assign the same source frame multiple times (it stays available after assignment)
 8. Use **Move Up / Move Down** or drag-and-drop in the right sidebar to reorder frame sequence (numbers auto-adjust)
 9. **File → Export Sprites…** → choose output folder → OK
-10. Individual transparent PNGs + `manifest.json` are written to the output folder
+10. Fully named transparent PNGs + `manifest.json` are written to the output folder
 
-> Note: Export now blocks if two sequence entries would produce the same output filename.
+> Note: Export auto-normalizes frame numbering per sequence and requires one character identity (`part1` + `part2`) per export run.
 
 ### Keyboard Shortcuts
 
@@ -123,32 +123,33 @@ output/
 
 ### manifest.json
 
-TexturePacker JSON Hash compatible, with an extra `animations` block:
+Export always writes a character-focused manifest:
 
 ```json
 {
-  "frames": {
-    "hero-base-walking-east-001.png": {
-      "frame": {"x": 0, "y": 0, "w": 32, "h": 48},
-      "rotated": false,
-      "trimmed": false,
-      "spriteSourceSize": {"x": 0, "y": 0, "w": 32, "h": 48},
-      "sourceSize": {"w": 32, "h": 48}
-    }
+  "character": {
+    "part1": "hero",
+    "part2": "base",
+    "source_image": "spritesheet.png",
+    "source_size": {"w": 256, "h": 256}
   },
-  "animations": {
-    "hero-base-walking-east": [
+  "assets": [
+    {
+      "file": "hero-base-walking-east-001.png",
+      "path": "hero/base/walking/hero-base-walking-east-001.png",
+      "part1": "hero",
+      "part2": "base",
+      "verb": "walking",
+      "direction": "east",
+      "frame_number": 1,
+      "bbox": {"x": 0, "y": 0, "w": 32, "h": 48}
+    }
+  ],
+  "sequence": {
+    "walking-east": [
       "hero-base-walking-east-001.png",
       "hero-base-walking-east-002.png"
     ]
-  },
-  "meta": {
-    "app": "sprite-splitter",
-    "version": "1.0.0",
-    "image": "spritesheet.png",
-    "format": "RGBA8888",
-    "size": {"w": 256, "h": 256},
-    "scale": "1"
   }
 }
 ```
