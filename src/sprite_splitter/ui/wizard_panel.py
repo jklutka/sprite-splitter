@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from sprite_splitter.models.sprite_frame import Direction, SpriteFrame, Verb
+from sprite_splitter.naming.convention import normalize_name_token
 
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -311,11 +312,11 @@ class _IdentityPage(QWidget):
 
     @property
     def part1(self) -> str:
-        return self._part1.text().strip()
+        return normalize_name_token(self._part1.text())
 
     @property
     def part2(self) -> str:
-        return self._part2.text().strip()
+        return normalize_name_token(self._part2.text())
 
     # ── internals ─────────────────────────────────────────────────────────
 
@@ -465,7 +466,7 @@ class _SortPage(QWidget):
     def current_verb(self) -> str:
         text = self._verb_combo.currentText()
         if text == "(custom)":
-            return self._custom_verb.text().strip()
+            return normalize_name_token(self._custom_verb.text())
         return text
 
     def set_identity(self, part1: str, part2: str) -> None:

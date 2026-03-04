@@ -28,7 +28,6 @@ from sprite_splitter.export.manifest import write_manifest
 from sprite_splitter.export.png_exporter import export_all
 from sprite_splitter.models.sprite_frame import BBox, Direction, SpriteFrame, Verb, reset_frame_ids
 from sprite_splitter.models.sprite_project import SpriteProject
-from sprite_splitter.naming.convention import find_duplicate_filenames, find_duplicate_relative_paths
 from sprite_splitter.ui.app_assets import load_logo_icon, load_logo_pixmap
 from sprite_splitter.ui.animation_preview import AnimationPreview
 from sprite_splitter.ui.canvas_view import CanvasView
@@ -623,6 +622,14 @@ class MainWindow(QMainWindow):
             return
 
         named = [f for f in frames if f.is_fully_named]
+        if not named:
+            QMessageBox.information(
+                self,
+                "Export",
+                "No fully named frames to export. Assign part1, part2, verb, and direction first.",
+            )
+            return
+
         default_dir = ""
         if self._project.source_path:
             default_dir = str(self._project.source_path.parent / "export")
@@ -632,47 +639,22 @@ class MainWindow(QMainWindow):
         if dlg.exec() != ExportDialog.DialogCode.Accepted:
             return
 
-        to_export = named if dlg.only_named else frames
-        if not to_export:
-            QMessageBox.information(self, "Export", "No matching frames to export.")
-            return
+        self._project.normalize_named_sequence_numbers()
+        to_export = [f for f in self._project.frames if f.is_fully_named]
 
-        out_dir = dlg.output_dir
-        settings = self._project.settings
-
-        duplicate_paths = find_duplicate_relative_paths(to_export, use_folders=dlg.use_folders)
-        if duplicate_paths:
-            sample = list(sorted(duplicate_paths.keys()))[:5]
-            details = "\n".join(f"- {path}" for path in sample)
-            extra = "" if len(duplicate_paths) <= 5 else "\n- ..."
+        identities = {(f.part1, f.part2) for f in to_export}
+        if len(identities) != 1:
             QMessageBox.warning(
                 self,
                 "Export Conflict",
-                "Export aborted because multiple sequence entries map to the "
-                "same output file path:\n\n"
-                f"{details}{extra}\n\n"
-                "Adjust frame numbering or naming so every exported frame has "
-                "a unique filename.",
+                "Export requires exactly one character identity (part1 + part2). "
+                "Please export one character at a time.",
             )
             return
 
-        if dlg.export_manifest:
-            duplicate_names = find_duplicate_filenames(to_export)
-            if duplicate_names:
-                sample = list(sorted(duplicate_names.keys()))[:5]
-                details = "\n".join(f"- {name}" for name in sample)
-                extra = "" if len(duplicate_names) <= 5 else "\n- ..."
-                QMessageBox.warning(
-                    self,
-                    "Manifest Conflict",
-                    "Export aborted because manifest frame names would collide:\n\n"
-                    f"{details}{extra}\n\n"
-                    "Ensure each sequence entry resolves to a unique output "
-                    "filename before exporting.",
-                )
-                return
-
         try:
+            out_dir = dlg.output_dir
+            settings = self._project.settings
             paths = export_all(
                 to_export,
                 out_dir,
@@ -681,22 +663,22 @@ class MainWindow(QMainWindow):
                 use_folders=dlg.use_folders,
             )
 
-            if dlg.export_manifest:
-                if len(self._project.sheets) == 1 and self._project.source_path is not None:
-                    src_name = self._project.source_path.name
-                else:
-                    src_name = "multiple-sheets"
-                src_size = (0, 0)
-                if self._project.source_array is not None:
-                    h, w = self._project.source_array.shape[:2]
-                    src_size = (w, h)
-                write_manifest(
-                    to_export,
-                    out_dir / "manifest.json",
-                    source_image_name=src_name,
-                    source_size=src_size,
-                )
-                paths.append(out_dir / "manifest.json")
+            if len(self._project.sheets) == 1 and self._project.source_path is not None:
+                src_name = self._project.source_path.name
+            else:
+                src_name = "multiple-sheets"
+            src_size = (0, 0)
+            if self._project.source_array is not None:
+                h, w = self._project.source_array.shape[:2]
+                src_size = (w, h)
+            write_manifest(
+                to_export,
+                out_dir / "manifest.json",
+                source_image_name=src_name,
+                source_size=src_size,
+                use_folders=dlg.use_folders,
+            )
+            paths.append(out_dir / "manifest.json")
 
             self.statusBar().showMessage(
                 f"Exported {len(paths)} files to {out_dir}"

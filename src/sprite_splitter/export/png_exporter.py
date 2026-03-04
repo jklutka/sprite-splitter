@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 from PIL import Image
 
 from sprite_splitter.detection.background import apply_transparency
-from sprite_splitter.naming.convention import generate_relative_path
+from sprite_splitter.naming.convention import (
+    find_duplicate_relative_paths,
+    generate_relative_path,
+)
 from sprite_splitter.models.sprite_frame import SpriteFrame
 
 
@@ -46,9 +48,17 @@ def export_all(
     """Export every frame and return the list of written paths."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    duplicates = find_duplicate_relative_paths(frames, use_folders=use_folders)
+    if duplicates:
+        duplicate_list = ", ".join(sorted(duplicates.keys()))
+        raise ValueError(
+            "Export aborted due to duplicate output file paths: "
+            f"{duplicate_list}"
+        )
+
     paths: list[Path] = []
     for frame in frames:
-        if frame.image is not None:
-            p = export_frame(frame, output_dir, bg_color, tolerance, use_folders)
-            paths.append(p)
+        p = export_frame(frame, output_dir, bg_color, tolerance, use_folders)
+        paths.append(p)
     return paths

@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from sprite_splitter.models.sprite_frame import Direction, Verb
+from sprite_splitter.naming.convention import normalize_name_token
 
 
 class NamingDialog(QDialog):
@@ -128,17 +129,17 @@ class NamingDialog(QDialog):
 
     @property
     def part1(self) -> str:
-        return self._part1.text().strip().lower().replace(" ", "-")
+        return normalize_name_token(self._part1.text())
 
     @property
     def part2(self) -> str:
-        return self._part2.text().strip().lower().replace(" ", "-")
+        return normalize_name_token(self._part2.text())
 
     @property
     def verb_value(self) -> str:
         sel = self._verb_combo.currentText()
         if sel == "(custom)":
-            return self._verb_custom.text().strip().lower().replace(" ", "-")
+            return normalize_name_token(self._verb_custom.text())
         return sel
 
     @property

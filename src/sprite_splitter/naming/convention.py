@@ -13,6 +13,11 @@ from __future__ import annotations
 from sprite_splitter.models.sprite_frame import SpriteFrame
 
 
+def normalize_name_token(value: str) -> str:
+    """Normalize a naming token for stable filenames/paths."""
+    return value.strip().lower().replace(" ", "-")
+
+
 def generate_filename(frame: SpriteFrame, extension: str = ".png") -> str:
     """Build the canonical output filename for *frame*."""
     return frame.filename_stem + extension
@@ -27,7 +32,7 @@ def generate_relative_path(
 
     When *use_folders* is ``True`` the structure is::
 
-        {part1}/{part2}/{verb}/{filename}
+        {part1}/{part2}/{verb}/{direction}/{filename}
 
     Otherwise just the flat filename.
     """
@@ -41,6 +46,8 @@ def generate_relative_path(
         parts.append(frame.part2)
     if frame.effective_verb:
         parts.append(frame.effective_verb)
+    if frame.direction is not None:
+        parts.append(frame.direction.value)
     parts.append(fname)
     return "/".join(parts)
 

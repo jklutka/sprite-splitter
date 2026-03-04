@@ -44,14 +44,6 @@ class ExportDialog(QDialog):
         self._use_folders = QCheckBox("Organise into sub-folders (part1/part2/verb/)")
         form.addRow(self._use_folders)
 
-        self._export_manifest = QCheckBox("Generate manifest.json")
-        self._export_manifest.setChecked(True)
-        form.addRow(self._export_manifest)
-
-        self._only_named = QCheckBox("Export only fully-named frames")
-        self._only_named.setChecked(True)
-        form.addRow(self._only_named)
-
         layout.addLayout(form)
 
         # Summary
@@ -77,18 +69,13 @@ class ExportDialog(QDialog):
     def use_folders(self) -> bool:
         return self._use_folders.isChecked()
 
-    @property
-    def export_manifest(self) -> bool:
-        return self._export_manifest.isChecked()
-
-    @property
-    def only_named(self) -> bool:
-        return self._only_named.isChecked()
-
     # ── helpers ───────────────────────────────────────────────────────────
 
     def set_frame_count(self, total: int, named: int) -> None:
-        self._summary.setText(f"{named} of {total} frames fully named.")
+        self._summary.setText(
+            f"{named} of {total} frames are fully named. "
+            "Only fully named frames are exported, and manifest.json is always written."
+        )
 
     def _browse(self) -> None:
         d = QFileDialog.getExistingDirectory(self, "Select Output Folder")
