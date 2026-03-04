@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
@@ -16,12 +14,13 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QMainWindow,
     QMessageBox,
+    QInputDialog,
     QPushButton,
     QStackedWidget,
     QStatusBar,
 )
 
-from sprite_splitter import __version__, __build_date__
+from sprite_splitter import __version__
 from sprite_splitter.detection.background import detect_background_color
 from sprite_splitter.detection.contour import ContourDetector
 from sprite_splitter.detection.grid import GridDetector
@@ -124,7 +123,7 @@ class MainWindow(QMainWindow):
         # File
         file_menu = mb.addMenu("&File")
 
-        act_open = QAction("&Open Sprite Sheet…", self)
+        act_open = QAction("&Open Sprite Sheet(s)…", self)
         act_open.setShortcut(QKeySequence.StandardKey.Open)
         act_open.triggered.connect(self._open_image)
         file_menu.addAction(act_open)
@@ -200,6 +199,11 @@ class MainWindow(QMainWindow):
         self._dir_dock.visibilityChanged.connect(act_dir_panel.setChecked)
         view_menu.addAction(act_dir_panel)
 
+        act_switch_sheet = QAction("Switch Active Sheet…", self)
+        act_switch_sheet.setShortcut(QKeySequence("Ctrl+Shift+S"))
+        act_switch_sheet.triggered.connect(self._switch_active_sheet)
+        view_menu.addAction(act_switch_sheet)
+
         view_menu.addSeparator()
 
         act_wizard = QAction("&Workflow Wizard…", self)
@@ -217,7 +221,6 @@ class MainWindow(QMainWindow):
     # ==================================================================
 
     def _show_about(self) -> None:
-        build = __build_date__ if __build_date__ != "dev" else "local dev build"
         dlg = QDialog(self)
         dlg.setWindowTitle("About Sprite Splitter")
         dlg.setWindowIcon(load_logo_icon())
@@ -278,7 +281,7 @@ class MainWindow(QMainWindow):
         self._settings_panel.auto_color_button.clicked.connect(self._auto_bg_color)
 
         # Frame panel
-        self._frame_panel.frame_clicked.connect(self._canvas.highlight_frame)
+        self._frame_panel.frame_clicked.connect(self._on_frame_clicked)
         self._frame_panel.assign_requested.connect(self._show_naming_dialog)
         self._frame_panel.delete_requested.connect(self._delete_frames)
         self._frame_panel.reorder_requested.connect(self._on_frame_reordered)
@@ -299,19 +302,21 @@ class MainWindow(QMainWindow):
         proj.frames_changed.connect(self._refresh_direction_panel)
         proj.frame_updated.connect(lambda _id: self._refresh_direction_panel())
 
+        proj.active_sheet_changed.connect(self._on_active_sheet_changed)
+
     # ==================================================================
     # Actions
     # ==================================================================
 
     def _open_image(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Open Sprite Sheet", "",
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, "Open Sprite Sheet(s)", "",
             "Images (*.png *.bmp *.gif *.jpg *.jpeg);;All Files (*)",
         )
-        if path:
+        if paths:
             try:
-                self._project.load_image(path)
-                self.statusBar().showMessage(f"Loaded: {path}")
+                self._project.load_images(paths, clear_frames=True)
+                self.statusBar().showMessage(f"Loaded {len(paths)} sheet(s).")
             except Exception as exc:
                 QMessageBox.critical(self, "Error", str(exc))
 
@@ -340,7 +345,7 @@ class MainWindow(QMainWindow):
 
     def _run_detection(self) -> None:
         if self._project.source_array is None:
-            QMessageBox.warning(self, "No Image", "Load a sprite sheet first.")
+            QMessageBox.warning(self, "No Image", "Load one or more sprite sheets first.")
             return
 
         settings = self._settings_panel.get_settings()
@@ -350,29 +355,38 @@ class MainWindow(QMainWindow):
 
         reset_frame_ids()
 
-        if settings.mode == "grid":
-            detector = GridDetector()
-            frames = detector.detect(
-                self._project.source_array,
-                settings.bg_color,
-                settings.tolerance,
-                cell_width=settings.cell_width,
-                cell_height=settings.cell_height,
-                margin=settings.margin,
-                padding=settings.padding,
-                auto=True,
-            )
-        else:
-            detector = ContourDetector()
-            frames = detector.detect(
-                self._project.source_array,
-                settings.bg_color,
-                settings.tolerance,
-                min_area=settings.min_area,
-            )
+        frames: list[SpriteFrame] = []
+        for sheet in self._project.sheets:
+            if settings.mode == "grid":
+                detector = GridDetector()
+                detected = detector.detect(
+                    sheet.array,
+                    settings.bg_color,
+                    settings.tolerance,
+                    cell_width=settings.cell_width,
+                    cell_height=settings.cell_height,
+                    margin=settings.margin,
+                    padding=settings.padding,
+                    auto=True,
+                )
+            else:
+                detector = ContourDetector()
+                detected = detector.detect(
+                    sheet.array,
+                    settings.bg_color,
+                    settings.tolerance,
+                    min_area=settings.min_area,
+                )
+
+            for frame in detected:
+                frame.source_sheet_id = sheet.id
+                frame.source_sheet_name = sheet.path.name
+            frames.extend(detected)
 
         self._project.set_frames(frames)
-        self.statusBar().showMessage(f"Detected {len(frames)} sprites.")
+        self.statusBar().showMessage(
+            f"Detected {len(frames)} sprites across {len(self._project.sheets)} sheet(s)."
+        )
 
         # Start the workflow wizard if we got results
         if frames:
@@ -560,7 +574,13 @@ class MainWindow(QMainWindow):
             return
         bbox = BBox(x, y, bw, bh)
         region = self._project.source_array[y:y + bh, x:x + bw].copy()
-        frame = SpriteFrame(bbox=bbox, image=region)
+        active_sheet = self._project.active_sheet
+        frame = SpriteFrame(
+            bbox=bbox,
+            image=region,
+            source_sheet_id=active_sheet.id if active_sheet is not None else 0,
+            source_sheet_name=active_sheet.path.name if active_sheet is not None else "",
+        )
         self._project.add_frame(frame)
         self.statusBar().showMessage(f"Added manual frame {frame.id} ({bw}×{bh}).")
 
@@ -662,10 +682,10 @@ class MainWindow(QMainWindow):
             )
 
             if dlg.export_manifest:
-                src_name = (
-                    self._project.source_path.name
-                    if self._project.source_path else "spritesheet.png"
-                )
+                if len(self._project.sheets) == 1 and self._project.source_path is not None:
+                    src_name = self._project.source_path.name
+                else:
+                    src_name = "multiple-sheets"
                 src_size = (0, 0)
                 if self._project.source_array is not None:
                     h, w = self._project.source_array.shape[:2]
@@ -693,20 +713,20 @@ class MainWindow(QMainWindow):
     # ==================================================================
 
     def _on_project_loaded(self) -> None:
-        if self._project.source_array is not None:
-            self._canvas.load_image(self._project.source_array)
-            self._auto_bg_color()
+        self._refresh_active_sheet_canvas()
+        self._auto_bg_color()
 
     def _on_frames_changed(self) -> None:
         frames = self._project.frames
-        self._canvas.set_frame_overlays(frames)
+        self._canvas.set_frame_overlays(self._active_sheet_frames())
         self._frame_panel.set_frames(frames)
 
     def _on_frame_updated(self, frame_id: int) -> None:
         frame = self._project.frame_by_id(frame_id)
         if frame is None:
             return
-        self._canvas.update_frame_overlay(frame_id, frame.is_fully_named)
+        if frame.source_sheet_id == self._project.active_sheet_id:
+            self._canvas.update_frame_overlay(frame_id, frame.is_fully_named)
         self._frame_panel.update_frame(frame)
 
     # ==================================================================
@@ -721,3 +741,54 @@ class MainWindow(QMainWindow):
             bg_color=settings.bg_color,
             tolerance=settings.tolerance,
         )
+
+    def _active_sheet_frames(self) -> list[SpriteFrame]:
+        active_sheet_id = self._project.active_sheet_id
+        if active_sheet_id is None:
+            return []
+        return self._project.frames_for_sheet(active_sheet_id)
+
+    def _refresh_active_sheet_canvas(self) -> None:
+        if self._project.source_array is not None:
+            self._canvas.load_image(self._project.source_array)
+            self._canvas.set_frame_overlays(self._active_sheet_frames())
+            active = self._project.active_sheet
+            if active is not None:
+                self.statusBar().showMessage(f"Active sheet: {active.path.name}")
+        else:
+            self._canvas.clear()
+
+    def _on_active_sheet_changed(self, _sheet_id: int) -> None:
+        self._refresh_active_sheet_canvas()
+
+    def _on_frame_clicked(self, frame_id: int) -> None:
+        frame = self._project.frame_by_id(frame_id)
+        if frame is None:
+            return
+        self._project.set_active_sheet(frame.source_sheet_id)
+        self._canvas.highlight_frame(frame_id)
+
+    def _switch_active_sheet(self) -> None:
+        sheets = self._project.sheets
+        if not sheets:
+            QMessageBox.information(self, "Sheets", "No sheets loaded.")
+            return
+
+        names = [sheet.path.name for sheet in sheets]
+        active = self._project.active_sheet
+        current_name = active.path.name if active is not None else names[0]
+        current_index = names.index(current_name) if current_name in names else 0
+        selected, ok = QInputDialog.getItem(
+            self,
+            "Switch Active Sheet",
+            "Sheet:",
+            names,
+            current_index,
+            False,
+        )
+        if not ok:
+            return
+        for sheet in sheets:
+            if sheet.path.name == selected:
+                self._project.set_active_sheet(sheet.id)
+                break

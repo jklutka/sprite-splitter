@@ -199,7 +199,8 @@ class _ReviewPage(QWidget):
             cl.addWidget(t)
 
             # Checkbox
-            cb = QCheckBox(f"#{frame.id}")
+            sheet = frame.source_sheet_name or "sheet"
+            cb = QCheckBox(f"#{frame.id} · {sheet}")
             cb.setChecked(True)
             cb.setStyleSheet("color: #bbb; font-size: 10px;")
             cb.stateChanged.connect(self._update_count)
@@ -486,7 +487,10 @@ class _SortPage(QWidget):
         for f in self._all_frames:
             item = QListWidgetItem()
             status = "unassigned" if f.direction is None else "assigned"
-            item.setText(f"Frame #{f.id}  ({f.bbox.w}×{f.bbox.h})  ·  {status}")
+            sheet = f.source_sheet_name or "sheet"
+            item.setText(
+                f"[{sheet}] Frame #{f.id}  ({f.bbox.w}×{f.bbox.h})  ·  {status}"
+            )
             item.setData(Qt.ItemDataRole.UserRole, f.id)
             if f.image is not None:
                 item.setIcon(QIcon(_thumb_pixmap(f.image, 48)))

@@ -99,6 +99,10 @@ class SpriteFrame:
     # Pixel data (RGBA uint8 ndarray, shape H×W×4)  – set after cropping
     image: Optional[np.ndarray] = field(default=None, repr=False)
 
+    # Source sheet metadata ----------------------------------------------------
+    source_sheet_id: int = 0
+    source_sheet_name: str = ""
+
     # Naming metadata -----------------------------------------------------------
     part1: str = ""
     part2: str = ""
@@ -164,6 +168,8 @@ class SpriteFrame:
         return {
             "id": self.id,
             "bbox": self.bbox.to_tuple(),
+            "source_sheet_id": self.source_sheet_id,
+            "source_sheet_name": self.source_sheet_name,
             "part1": self.part1,
             "part2": self.part2,
             "verb": self.effective_verb,

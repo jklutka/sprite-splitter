@@ -98,6 +98,7 @@ class FramePanel(QWidget):
         self._shortcut_move_down.activated.connect(lambda: self._move_current(1))
 
         self._frame_map: dict[int, QListWidgetItem] = {}
+        self._frame_data: dict[int, SpriteFrame] = {}
 
     # ── public API ────────────────────────────────────────────────────────
 
@@ -105,6 +106,7 @@ class FramePanel(QWidget):
         """Rebuild the list from scratch."""
         self._list.clear()
         self._frame_map.clear()
+        self._frame_data = {f.id: f for f in frames}
         for f in frames:
             self._add_item(f)
         self._count_label.setText(f"{len(frames)} frames")
@@ -114,7 +116,8 @@ class FramePanel(QWidget):
         item = self._frame_map.get(frame.id)
         if item is None:
             return
-        item.setText(frame.display_name)
+        self._frame_data[frame.id] = frame
+        item.setText(self._item_label(frame))
         item.setIcon(QIcon(_make_thumbnail(frame.image)))
         if frame.is_fully_named:
             item.setForeground(QColor(80, 200, 80))
@@ -140,7 +143,7 @@ class FramePanel(QWidget):
 
     def _add_item(self, frame: SpriteFrame) -> None:
         item = QListWidgetItem()
-        item.setText(frame.display_name)
+        item.setText(self._item_label(frame))
         item.setIcon(QIcon(_make_thumbnail(frame.image)))
         item.setData(Qt.ItemDataRole.UserRole, frame.id)
         if frame.is_fully_named:
@@ -149,6 +152,10 @@ class FramePanel(QWidget):
             item.setForeground(QColor(255, 120, 120))
         self._list.addItem(item)
         self._frame_map[frame.id] = item
+
+    def _item_label(self, frame: SpriteFrame) -> str:
+        sheet = frame.source_sheet_name or "sheet"
+        return f"[{sheet}] {frame.display_name}"
 
     def _on_current_changed(self, current: Optional[QListWidgetItem], _prev):
         if current is not None:

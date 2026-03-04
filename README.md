@@ -12,6 +12,7 @@ A desktop utility to **detect**, **organize**, **name**, and **export** individu
 | Feature | Description |
 |---|---|
 | **Auto-detect sprites** | Connected-component analysis (OpenCV) for irregular layouts, or uniform grid splitting |
+| **Multi-sheet processing** | Import multiple sheets at once, detect all in one run, and keep source-sheet context per frame |
 | **Background removal** | Tolerance-based transparency with soft anti-aliased edges |
 | **Visual canvas** | Zoom (Ctrl+scroll), pan (middle-click), overlay rectangles for detected frames |
 | **Name organizer** | Structured naming: `{part1}-{part2}-{verb}-{direction}-{NNN}.png` |
@@ -78,16 +79,18 @@ python -m sprite_splitter.main
 
 ### Quick Start
 
-1. **File → Open Sprite Sheet** – load a PNG with a solid-colour background
+1. **File → Open Sprite Sheet(s)** – load one or more sheets with a solid-colour background
 2. Click **Auto** to detect the background colour, or use **Pick…** to choose manually
 3. Adjust **Tolerance** if needed (higher = more aggressive background matching)
 4. Choose **Auto-detect (contour)** or **Grid** mode in the Settings panel
-5. Click **Detect Sprites** – frames appear as coloured overlays on the canvas
-6. Select frames in the right sidebar → click **Assign Name…** → fill in part1, part2, verb, direction
-7. In the workflow **Sort into Frame Sequences** step, you can assign the same source frame multiple times (it stays available after assignment)
-8. Use **Move Up / Move Down** or drag-and-drop in the right sidebar to reorder frame sequence (numbers auto-adjust)
-9. **File → Export Sprites…** → choose output folder → OK
-10. Individual transparent PNGs + `manifest.json` are written to the output folder
+5. Click **Detect Sprites** – all loaded sheets are processed in one run
+6. Use **View → Switch Active Sheet…** to inspect overlays per sheet on the canvas
+7. Select frames in the right sidebar (sheet name is shown per frame) → click **Assign Name…**
+8. Use the **Direction Classification** panel filters (verb + sheet) to organize direction groups from multiple sheets
+9. In the workflow **Sort into Frame Sequences** step, you can assign the same source frame multiple times (it stays available after assignment)
+10. Use **Move Up / Move Down** or drag-and-drop in the right sidebar to reorder frame sequence (numbers auto-adjust)
+11. **File → Export Sprites…** → choose output folder → OK
+12. Individual transparent PNGs + `manifest.json` are written to the output folder
 
 > Note: Export now blocks if two sequence entries would produce the same output filename.
 

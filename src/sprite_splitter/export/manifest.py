@@ -32,6 +32,10 @@ def build_manifest(
             "trimmed": False,
             "spriteSourceSize": {"x": 0, "y": 0, "w": f.bbox.w, "h": f.bbox.h},
             "sourceSize": {"w": f.bbox.w, "h": f.bbox.h},
+            "sourceSheet": {
+                "id": f.source_sheet_id,
+                "name": f.source_sheet_name,
+            },
         }
 
         # Group key for the animation block

@@ -235,6 +235,11 @@ class DirectionPanel(QWidget):
             self._verb_combo.addItem(v.value)
         self._verb_combo.currentTextChanged.connect(self._refresh_slots)
         verb_row.addRow("Filter verb:", self._verb_combo)
+
+        self._sheet_combo = QComboBox()
+        self._sheet_combo.addItem("(all sheets)")
+        self._sheet_combo.currentTextChanged.connect(self._refresh_slots)
+        verb_row.addRow("Filter sheet:", self._sheet_combo)
         root.addLayout(verb_row)
 
         # ── Compass grid ──────────────────────────────────────────────────
@@ -297,6 +302,7 @@ class DirectionPanel(QWidget):
     def set_frames(self, frames: list[SpriteFrame]) -> None:
         """Update the panel with the latest project frames."""
         self._all_frames = list(frames)
+        self._rebuild_sheet_filter()
         self._refresh_slots()
 
     def set_selected_ids_callback(self, fn) -> None:
@@ -310,10 +316,18 @@ class DirectionPanel(QWidget):
         verb_filter = self._verb_combo.currentText()
         filter_all = verb_filter == "(all verbs)"
 
+        sheet_filter = self._sheet_combo.currentText()
+        filter_all_sheets = sheet_filter == "(all sheets)"
+
+        visible_frames = [
+            f for f in self._all_frames
+            if filter_all_sheets or (f.source_sheet_name == sheet_filter)
+        ]
+
         classified = 0
         for direction in Direction:
             matching = [
-                f for f in self._all_frames
+                f for f in visible_frames
                 if f.direction == direction
                 and (filter_all or f.effective_verb == verb_filter)
             ]
@@ -321,13 +335,28 @@ class DirectionPanel(QWidget):
             self._slots[direction].set_frame_info(len(matching), preview_img)
             classified += len(matching)
 
-        total = len(self._all_frames)
+        total = len(visible_frames)
         unclassified = total - sum(
-            1 for f in self._all_frames if f.direction is not None
+            1 for f in visible_frames if f.direction is not None
         )
+        scope = "all sheets" if filter_all_sheets else sheet_filter
         self._summary_label.setText(
-            f"{classified} classified · {unclassified} unassigned · {total} total"
+            f"{classified} classified · {unclassified} unassigned · {total} total · {scope}"
         )
+
+    def _rebuild_sheet_filter(self) -> None:
+        selected = self._sheet_combo.currentText()
+        names = sorted({f.source_sheet_name for f in self._all_frames if f.source_sheet_name})
+
+        self._sheet_combo.blockSignals(True)
+        self._sheet_combo.clear()
+        self._sheet_combo.addItem("(all sheets)")
+        for name in names:
+            self._sheet_combo.addItem(name)
+        self._sheet_combo.blockSignals(False)
+
+        idx = self._sheet_combo.findText(selected)
+        self._sheet_combo.setCurrentIndex(idx if idx >= 0 else 0)
 
     # ── slot callbacks ────────────────────────────────────────────────────
 
