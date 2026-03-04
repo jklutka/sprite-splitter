@@ -194,7 +194,7 @@ class TestNaming:
             frame_number=1,
         )
         path = generate_relative_path(f, use_folders=True)
-        assert path == "hero/base/walking/hero-base-walking-east-001.png"
+        assert path == "hero/base/walking/east/hero-base-walking-east-001.png"
 
     def test_custom_verb(self):
         f = SpriteFrame(
@@ -316,7 +316,35 @@ class TestExport:
             frame_number=1,
         )
         manifest = build_manifest([frame], "sheet.png", (128, 64), use_folders=True)
-        assert manifest["assets"][0]["path"] == "hero/base/walking/hero-base-walking-east-001.png"
+        assert (
+            manifest["assets"][0]["path"]
+            == "hero/base/walking/east/hero-base-walking-east-001.png"
+        )
+        assert manifest["sequence"]["walking-east"] == [
+            "hero/base/walking/east/hero-base-walking-east-001.png"
+        ]
+
+    def test_manifest_json_handles_numpy_scalar_bbox(self):
+        frame = SpriteFrame(
+            bbox=BBox(np.int32(0), np.int32(0), np.int32(32), np.int32(32)),
+            part1="hero",
+            part2="base",
+            verb=Verb.WALKING,
+            direction=Direction.EAST,
+            frame_number=np.int32(1),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_path = write_manifest(
+                [frame],
+                Path(tmp) / "manifest.json",
+                source_image_name="sheet.png",
+                source_size=(np.int32(128), np.int32(64)),
+                use_folders=False,
+            )
+            data = json.loads(manifest_path.read_text(encoding="utf-8"))
+            asset = data["assets"][0]
+            assert asset["frame_number"] == 1
+            assert asset["bbox"] == {"x": 0, "y": 0, "w": 32, "h": 32}
 
     def test_manifest_raises_for_mixed_character_identity(self):
         frames = [
@@ -396,6 +424,30 @@ class TestExport:
                 "hero-base-walking-east-001.png",
                 "hero-base-walking-east-002.png",
             ]
+
+    def test_export_all_raises_on_duplicate_relative_paths(self):
+        img = _make_sheet_grid(1, 1, 32, 32)
+        frame1 = SpriteFrame(
+            bbox=BBox(0, 0, 32, 32),
+            image=img[0:32, 0:32].copy(),
+            part1="hero",
+            part2="base",
+            verb=Verb.IDLE,
+            direction=Direction.SOUTH,
+            frame_number=1,
+        )
+        frame2 = SpriteFrame(
+            bbox=BBox(0, 0, 32, 32),
+            image=img[0:32, 0:32].copy(),
+            part1="hero",
+            part2="base",
+            verb=Verb.IDLE,
+            direction=Direction.SOUTH,
+            frame_number=1,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            with pytest.raises(ValueError, match="duplicate output file paths"):
+                export_all([frame1, frame2], Path(tmp), BG, tolerance=10, use_folders=True)
 
 
 class TestProjectFrameReorder:

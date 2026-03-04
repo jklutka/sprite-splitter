@@ -9,6 +9,11 @@ from sprite_splitter.naming.convention import generate_filename, generate_relati
 from sprite_splitter.models.sprite_frame import SpriteFrame
 
 
+def _to_json_int(value: object) -> int:
+    """Convert numeric-like values (including numpy scalars) to plain int."""
+    return int(value)  # type: ignore[arg-type]
+
+
 def build_manifest(
     frames: list[SpriteFrame],
     source_image_name: str = "spritesheet.png",
@@ -52,23 +57,26 @@ def build_manifest(
                 "part2": frame.part2,
                 "verb": frame.effective_verb,
                 "direction": frame.direction.value,
-                "frame_number": frame.frame_number,
+                "frame_number": _to_json_int(frame.frame_number),
                 "bbox": {
-                    "x": frame.bbox.x,
-                    "y": frame.bbox.y,
-                    "w": frame.bbox.w,
-                    "h": frame.bbox.h,
+                    "x": _to_json_int(frame.bbox.x),
+                    "y": _to_json_int(frame.bbox.y),
+                    "w": _to_json_int(frame.bbox.w),
+                    "h": _to_json_int(frame.bbox.h),
                 },
             }
         )
-        sequence.setdefault(sequence_key, []).append(filename)
+        sequence.setdefault(sequence_key, []).append(relative_path)
 
     return {
         "character": {
             "part1": part1,
             "part2": part2,
             "source_image": source_image_name,
-            "source_size": {"w": source_size[0], "h": source_size[1]},
+            "source_size": {
+                "w": _to_json_int(source_size[0]),
+                "h": _to_json_int(source_size[1]),
+            },
         },
         "assets": assets,
         "sequence": sequence,
