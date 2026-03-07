@@ -79,6 +79,7 @@ class SpriteProject(QObject):
     frame_updated = Signal(int)        # emitted when a single frame's metadata changes (id)
     project_loaded = Signal()          # emitted after loading a saved project or new image
     active_sheet_changed = Signal(int)
+    character_changed = Signal()       # emitted when character identity (part1/part2) changes
 
     def __init__(self, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
@@ -87,6 +88,8 @@ class SpriteProject(QObject):
         self._next_sheet_id: int = 1
         self.settings = DetectionSettings()
         self._frames: list[SpriteFrame] = []
+        self.character_part1: str = ""
+        self.character_part2: str = ""
 
     # ── frame access ──────────────────────────────────────────────────────────
 
@@ -131,6 +134,12 @@ class SpriteProject(QObject):
 
     def frames_for_sheet(self, sheet_id: int) -> list[SpriteFrame]:
         return [f for f in self._frames if f.source_sheet_id == sheet_id]
+
+    def set_character(self, part1: str, part2: str) -> None:
+        """Set the project-level character identity and emit character_changed."""
+        self.character_part1 = part1
+        self.character_part2 = part2
+        self.character_changed.emit()
 
     # ── image loading ─────────────────────────────────────────────────────────
 
@@ -294,6 +303,8 @@ class SpriteProject(QObject):
         path = Path(path)
         data = {
             "version": 1,
+            "character_part1": self.character_part1,
+            "character_part2": self.character_part2,
             "source_path": str(self.source_path) if self.source_path else None,
             "sources": [
                 {
@@ -312,6 +323,8 @@ class SpriteProject(QObject):
         """Restore project state from a .spriteproj JSON file."""
         path = Path(path)
         data = json.loads(path.read_text(encoding="utf-8"))
+        self.character_part1 = data.get("character_part1", "")
+        self.character_part2 = data.get("character_part2", "")
         self.settings = DetectionSettings.from_dict(data.get("settings", {}))
 
         src_list = data.get("sources")

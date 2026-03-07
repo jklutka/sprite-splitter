@@ -18,12 +18,14 @@ from PySide6.QtWidgets import (
     QPushButton,
     QStackedWidget,
     QStatusBar,
+    QWidget,
 )
 
 from sprite_splitter import __version__
 from sprite_splitter.detection.background import detect_background_color
 from sprite_splitter.detection.contour import ContourDetector
 from sprite_splitter.detection.grid import GridDetector
+from sprite_splitter.export.gif_exporter import export_all_as_gif
 from sprite_splitter.export.manifest import write_manifest
 from sprite_splitter.export.png_exporter import export_all
 from sprite_splitter.models.sprite_frame import BBox, Direction, SpriteFrame, Verb, reset_frame_ids
@@ -32,10 +34,12 @@ from sprite_splitter.ui.app_assets import load_logo_icon, load_logo_pixmap
 from sprite_splitter.ui.animation_preview import AnimationPreview
 from sprite_splitter.ui.canvas_view import CanvasView
 from sprite_splitter.ui.direction_panel import DirectionPanel
+from sprite_splitter.ui.character_dialog import CharacterDialog
 from sprite_splitter.ui.export_dialog import ExportDialog
 from sprite_splitter.ui.frame_panel import FramePanel
 from sprite_splitter.ui.naming_dialog import NamingDialog
 from sprite_splitter.ui.settings_panel import SettingsPanel
+from sprite_splitter.ui.start_screen import StartScreen
 from sprite_splitter.ui.wizard_panel import WorkflowWizard
 
 
@@ -51,34 +55,50 @@ class MainWindow(QMainWindow):
         # ── model ─────────────────────────────────────────────────────────
         self._project = SpriteProject(self)
 
-        # ── central stacked widget (canvas ↔ wizard) ─────────────────────
+        # ── central stacked widget (start screen ↔ canvas ↔ wizard) ─────
         self._central_stack = QStackedWidget(self)
+        self._start_screen = StartScreen()
         self._canvas = CanvasView(self)
-        self._central_stack.addWidget(self._canvas)
-        self.setCentralWidget(self._central_stack)
+        self._central_stack.addWidget(self._start_screen)   # index 0
+        self._central_stack.addWidget(self._canvas)          # index 1
+        self._central_stack.setCurrentWidget(self._start_screen)
 
         # Wizard is created on demand after detection
         self._wizard: WorkflowWizard | None = None
         self._wizard_part1: str = ""
         self._wizard_part2: str = ""
 
+        # ── header bar (character identity + status + export) ────────────
+        self._header_bar = self._build_header_bar()
+        self._header_bar.hide()
+
+        container = QWidget(self)
+        container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
+        container_layout.addWidget(self._header_bar)
+        container_layout.addWidget(self._central_stack, stretch=1)
+        self.setCentralWidget(container)
+
         # ── left dock: settings ───────────────────────────────────────────
         self._settings_panel = SettingsPanel()
-        settings_dock = QDockWidget("Settings", self)
-        settings_dock.setWidget(self._settings_panel)
-        settings_dock.setAllowedAreas(
+        self._settings_dock = QDockWidget("Settings", self)
+        self._settings_dock.setWidget(self._settings_panel)
+        self._settings_dock.setAllowedAreas(
             Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea
         )
-        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, settings_dock)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._settings_dock)
+        self._settings_dock.hide()
 
         # ── right dock: frame list ────────────────────────────────────────
         self._frame_panel = FramePanel()
-        frame_dock = QDockWidget("Frames", self)
-        frame_dock.setWidget(self._frame_panel)
-        frame_dock.setAllowedAreas(
+        self._frame_dock = QDockWidget("Frames", self)
+        self._frame_dock.setWidget(self._frame_panel)
+        self._frame_dock.setAllowedAreas(
             Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea
         )
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, frame_dock)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._frame_dock)
+        self._frame_dock.hide()
 
         # ── bottom dock: animation preview ────────────────────────────────
         self._anim_preview = AnimationPreview()
@@ -90,6 +110,7 @@ class MainWindow(QMainWindow):
             | Qt.DockWidgetArea.RightDockWidgetArea
         )
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self._anim_dock)
+        self._anim_dock.hide()
 
         # ── right dock: direction classification ──────────────────────────
         self._direction_panel = DirectionPanel()
@@ -101,16 +122,119 @@ class MainWindow(QMainWindow):
         )
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dir_dock)
         self._dir_dock = dir_dock
+        self._dir_dock.hide()
 
         # ── status bar ────────────────────────────────────────────────────
         self.setStatusBar(QStatusBar(self))
-        self.statusBar().showMessage("Ready – open a sprite sheet to begin.")
+        self.statusBar().showMessage("Ready \u2014 create a new character or open a project to begin.")
 
         # ── menu bar ─────────────────────────────────────────────────────
         self._build_menus()
 
         # ── connections ──────────────────────────────────────────────────
         self._connect_signals()
+
+    # ==================================================================
+    # Header bar
+    # ==================================================================
+
+    def _build_header_bar(self) -> QWidget:
+        bar = QWidget()
+        bar.setFixedHeight(40)
+        bar.setStyleSheet(
+            "background: #1e1e2e; border-bottom: 1px solid #333;"
+        )
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(12, 0, 12, 0)
+        layout.setSpacing(8)
+
+        self._header_identity_lbl = QLabel("")
+        self._header_identity_lbl.setStyleSheet(
+            "color: #eee; font-size: 13px; font-weight: bold;"
+        )
+        layout.addWidget(self._header_identity_lbl)
+
+        self._header_edit_btn = QPushButton("Edit")
+        self._header_edit_btn.setFixedHeight(24)
+        self._header_edit_btn.setStyleSheet(
+            "QPushButton { color: #888; font-size: 11px; background: transparent; "
+            "border: 1px solid #444; border-radius: 3px; padding: 0 8px; }"
+            "QPushButton:hover { color: #ccc; border-color: #666; }"
+        )
+        self._header_edit_btn.clicked.connect(self._on_edit_character)
+        layout.addWidget(self._header_edit_btn)
+
+        sep = QLabel("|")
+        sep.setStyleSheet("color: #444; font-size: 16px;")
+        layout.addWidget(sep)
+
+        self._header_status_lbl = QLabel("")
+        self._header_status_lbl.setStyleSheet("color: #777; font-size: 12px;")
+        layout.addWidget(self._header_status_lbl)
+
+        layout.addStretch()
+
+        self._header_export_btn = QPushButton("Export \u2192")
+        self._header_export_btn.setFixedHeight(28)
+        self._header_export_btn.setStyleSheet(
+            "QPushButton { background: #2a5a2a; color: #8d8; font-size: 12px; "
+            "font-weight: bold; border: 1px solid #4a8; border-radius: 4px; padding: 0 14px; }"
+            "QPushButton:hover { background: #3a7a3a; color: #afc; }"
+            "QPushButton:disabled { background: #252525; color: #555; border-color: #333; }"
+        )
+        self._header_export_btn.clicked.connect(self._export)
+        layout.addWidget(self._header_export_btn)
+
+        return bar
+
+    def _refresh_header(self) -> None:
+        p1 = self._project.character_part1
+        p2 = self._project.character_part2
+        if p1 or p2:
+            self._header_identity_lbl.setText(f"{p1}  \u00b7  {p2}" if p1 and p2 else p1 or p2)
+        else:
+            self._header_identity_lbl.setText("(no character)")
+
+        sheets = len(self._project.sheets)
+        frames = self._project.frames
+        named = sum(1 for f in frames if f.is_fully_named)
+        total = len(frames)
+
+        parts = []
+        if sheets:
+            parts.append(f"{sheets} sheet{'s' if sheets != 1 else ''}")
+        if total:
+            parts.append(f"{total} frame{'s' if total != 1 else ''}")
+            parts.append(f"{named}/{total} named")
+        self._header_status_lbl.setText("  \u00b7  ".join(parts) if parts else "No sheets loaded")
+
+        self._header_export_btn.setEnabled(named > 0)
+
+    def _on_new_character(self) -> None:
+        dlg = CharacterDialog(self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._project.set_character(dlg.part1, dlg.part2)
+        self._activate_project_view()
+
+    def _on_edit_character(self) -> None:
+        dlg = CharacterDialog(
+            self,
+            part1=self._project.character_part1,
+            part2=self._project.character_part2,
+        )
+        dlg.setWindowTitle("Edit Character")
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._project.set_character(dlg.part1, dlg.part2)
+
+    def _activate_project_view(self) -> None:
+        """Switch from start screen to canvas view and reveal all docks."""
+        self._central_stack.setCurrentWidget(self._canvas)
+        self._header_bar.show()
+        self._refresh_header()
+        for dock in (self._settings_dock, self._frame_dock, self._dir_dock, self._anim_dock):
+            dock.show()
 
     # ==================================================================
     # Menu bar
@@ -121,6 +245,13 @@ class MainWindow(QMainWindow):
 
         # File
         file_menu = mb.addMenu("&File")
+
+        act_new_char = QAction("&New Character…", self)
+        act_new_char.setShortcut(QKeySequence("Ctrl+Shift+N"))
+        act_new_char.triggered.connect(self._on_new_character)
+        file_menu.addAction(act_new_char)
+
+        file_menu.addSeparator()
 
         act_open = QAction("&Open Sprite Sheet(s)…", self)
         act_open.setShortcut(QKeySequence.StandardKey.Open)
@@ -270,10 +401,16 @@ class MainWindow(QMainWindow):
     def _connect_signals(self) -> None:
         proj = self._project
 
+        # Start screen
+        self._start_screen.new_character_requested.connect(self._on_new_character)
+        self._start_screen.open_project_requested.connect(self._load_project)
+
         # Project → UI
         proj.project_loaded.connect(self._on_project_loaded)
         proj.frames_changed.connect(self._on_frames_changed)
         proj.frame_updated.connect(self._on_frame_updated)
+        proj.character_changed.connect(self._refresh_header)
+        proj.frames_changed.connect(self._refresh_header)
 
         # Settings panel
         self._settings_panel.detect_requested.connect(self._run_detection)
@@ -421,6 +558,11 @@ class MainWindow(QMainWindow):
         self._dir_dock.hide()
 
         self._wizard.start(self._project.frames)
+        if self._project.character_part1 or self._project.character_part2:
+            self._wizard.set_identity(
+                self._project.character_part1,
+                self._project.character_part2,
+            )
         self.statusBar().showMessage(
             "Workflow: review detected sprites, then assign metadata."
         )
@@ -655,30 +797,41 @@ class MainWindow(QMainWindow):
         try:
             out_dir = dlg.output_dir
             settings = self._project.settings
-            paths = export_all(
-                to_export,
-                out_dir,
-                settings.bg_color,
-                settings.tolerance,
-                use_folders=dlg.use_folders,
-            )
 
-            if len(self._project.sheets) == 1 and self._project.source_path is not None:
-                src_name = self._project.source_path.name
+            if dlg.export_format == "gif":
+                paths = export_all_as_gif(
+                    to_export,
+                    out_dir,
+                    settings.bg_color,
+                    settings.tolerance,
+                    fps=dlg.fps,
+                    use_folders=dlg.use_folders,
+                )
             else:
-                src_name = "multiple-sheets"
-            src_size = (0, 0)
-            if self._project.source_array is not None:
-                h, w = self._project.source_array.shape[:2]
-                src_size = (w, h)
-            write_manifest(
-                to_export,
-                out_dir / "manifest.json",
-                source_image_name=src_name,
-                source_size=src_size,
-                use_folders=dlg.use_folders,
-            )
-            paths.append(out_dir / "manifest.json")
+                paths = export_all(
+                    to_export,
+                    out_dir,
+                    settings.bg_color,
+                    settings.tolerance,
+                    use_folders=dlg.use_folders,
+                )
+
+                if len(self._project.sheets) == 1 and self._project.source_path is not None:
+                    src_name = self._project.source_path.name
+                else:
+                    src_name = "multiple-sheets"
+                src_size = (0, 0)
+                if self._project.source_array is not None:
+                    h, w = self._project.source_array.shape[:2]
+                    src_size = (w, h)
+                write_manifest(
+                    to_export,
+                    out_dir / "manifest.json",
+                    source_image_name=src_name,
+                    source_size=src_size,
+                    use_folders=dlg.use_folders,
+                )
+                paths.append(out_dir / "manifest.json")
 
             self.statusBar().showMessage(
                 f"Exported {len(paths)} files to {out_dir}"
@@ -695,6 +848,7 @@ class MainWindow(QMainWindow):
     # ==================================================================
 
     def _on_project_loaded(self) -> None:
+        self._activate_project_view()
         self._refresh_active_sheet_canvas()
         self._auto_bg_color()
 

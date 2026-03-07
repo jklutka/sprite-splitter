@@ -672,6 +672,11 @@ class WorkflowWizard(QWidget):
     def current_verb(self) -> str:
         return self._sort.current_verb
 
+    def set_identity(self, part1: str, part2: str) -> None:
+        """Pre-fill the identity page with the project-level character identity."""
+        self._identity._part1.setText(part1)
+        self._identity._part2.setText(part2)
+
     # ==================================================================
     # Navigation
     # ==================================================================
