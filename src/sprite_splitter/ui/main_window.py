@@ -425,6 +425,7 @@ class MainWindow(QMainWindow):
         # Canvas
         self._canvas.frame_selected.connect(self._frame_panel.select_frame)
         self._canvas.manual_rect_drawn.connect(self._on_manual_rect)
+        self._canvas.frame_bbox_changed.connect(self._on_frame_bbox_changed)
 
         # Direction panel
         self._direction_panel.frames_assigned.connect(self._on_direction_assign)
@@ -724,6 +725,30 @@ class MainWindow(QMainWindow):
         )
         self._project.add_frame(frame)
         self.statusBar().showMessage(f"Added manual frame {frame.id} ({bw}×{bh}).")
+
+    # ── frame bbox resize ─────────────────────────────────────────────────
+
+    def _on_frame_bbox_changed(self, frame_id: int, scene_rect: QRectF) -> None:
+        """User drag-resized a frame rect on canvas — update bbox and re-crop image."""
+        frame = self._project.frame_by_id(frame_id)
+        if frame is None:
+            return
+        sheet = next(
+            (s for s in self._project.sheets if s.id == frame.source_sheet_id), None
+        )
+        if sheet is None:
+            return
+        sh, sw = sheet.array.shape[:2]
+        x = max(0, int(scene_rect.x()))
+        y = max(0, int(scene_rect.y()))
+        bw = min(int(scene_rect.width()), sw - x)
+        bh = min(int(scene_rect.height()), sh - y)
+        if bw < 2 or bh < 2:
+            return
+        new_bbox = BBox(x, y, bw, bh)
+        new_image = sheet.array[y:y + bh, x:x + bw].copy()
+        self._project.update_frame(frame_id, bbox=new_bbox, image=new_image)
+        self.statusBar().showMessage(f"Frame {frame_id} resized to {bw}\u00d7{bh}.")
 
     # ── direction classification ──────────────────────────────────────────
 

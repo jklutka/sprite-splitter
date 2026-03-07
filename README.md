@@ -11,12 +11,15 @@ A desktop utility to **detect**, **organize**, **name**, and **export** individu
 
 | Feature | Description |
 |---|---|
+| **Character-first workflow** | Name your character (entity + variant) before loading sheets; identity persists in a header bar throughout the session |
 | **Auto-detect sprites** | Connected-component analysis (OpenCV) for irregular layouts, or uniform grid splitting |
 | **Multi-sheet processing** | Import multiple sheets at once, detect all in one run, and keep source-sheet context per frame |
 | **Background removal** | Tolerance-based transparency with soft anti-aliased edges |
 | **Visual canvas** | Zoom (Ctrl+scroll), pan (middle-click), overlay rectangles for detected frames |
+| **Frame bbox editing** | Drag the edge or corner of any selected frame rect to resize its bounding box after detection |
 | **Name organizer** | Structured naming: `{part1}-{part2}-{verb}-{direction}-{NNN}.png` |
 | **Batch assignment** | Select multiple frames → assign verb/direction → auto-number |
+| **Animated GIF export** | Export each named sequence as a self-contained `.gif` with configurable FPS |
 | **JSON manifest** | Character-centric JSON with `character`, `assets`, and `sequence` blocks |
 | **Project save/load** | Persist work-in-progress as `.spriteproj` files |
 
@@ -79,18 +82,19 @@ python -m sprite_splitter.main
 
 ### Quick Start
 
-1. **File → Open Sprite Sheet(s)** – load one or more sheets with a solid-colour background
-2. Click **Auto** to detect the background colour, or use **Pick…** to choose manually
-3. Adjust **Tolerance** if needed (higher = more aggressive background matching)
-4. Choose **Auto-detect (contour)** or **Grid** mode in the Settings panel
-5. Click **Detect Sprites** – all loaded sheets are processed in one run
-6. Use **View → Switch Active Sheet…** to inspect overlays per sheet on the canvas
-7. Select frames in the right sidebar (sheet name is shown per frame) → click **Assign Name…**
-8. Use the **Direction Classification** panel filters (verb + sheet) to organize direction groups from multiple sheets
-9. In the workflow **Sort into Frame Sequences** step, you can assign the same source frame multiple times (it stays available after assignment)
-10. Use **Move Up / Move Down** or drag-and-drop in the right sidebar to reorder frame sequence (numbers auto-adjust)
-11. **File → Export Sprites…** → choose output folder → OK
-12. Fully named transparent PNGs + `manifest.json` are written to the output folder
+1. **New Character** – enter an entity name (`part1`) and variant (`part2`) on the start screen
+2. **File → Open Sprite Sheet(s)** – load one or more sheets with a solid-colour background
+3. Click **Auto** to detect the background colour, or use **Pick…** to choose manually
+4. Adjust **Tolerance** if needed (higher = more aggressive background matching)
+5. Choose **Auto-detect (contour)** or **Grid** mode in the Settings panel
+6. Click **Detect Sprites** – all loaded sheets are processed in one run; the guided wizard opens automatically
+7. **Review step** – deselect any false positives, then click Next
+8. **Identity step** – entity name and variant are pre-filled from your character; adjust if needed
+9. **Sort step** – pick a verb, select frames, click a compass direction to assign; frames stay available for reuse across directions
+10. After the wizard, use **View → Switch Active Sheet…** to inspect overlays per sheet on the canvas
+11. **Resize a frame** – click a frame rect on the canvas to select it, then drag any edge or corner to adjust its bounding box
+12. Use **Move Up / Move Down** or drag-and-drop in the sidebar to reorder frames (numbers auto-adjust)
+13. Click **Export →** in the header bar (or **File → Export Sprites…** / Ctrl+E) – choose Individual PNGs or Animated GIFs, set output folder, click OK
 
 > Note: Export auto-normalizes frame numbering per sequence and requires one character identity (`part1` + `part2`) per export run.
 > Note: Export aborts if duplicate naming would produce the same output path.
@@ -99,6 +103,7 @@ python -m sprite_splitter.main
 
 | Shortcut | Action |
 |---|---|
+| Ctrl+Shift+N | New Character |
 | Ctrl+O | Open sprite sheet |
 | Ctrl+S | Save project |
 | Ctrl+E | Export sprites |
@@ -111,10 +116,13 @@ python -m sprite_splitter.main
 | Delete | Remove selected frames |
 | Ctrl+Scroll | Zoom canvas |
 | Middle-click drag | Pan canvas |
+| Drag frame edge/corner | Resize selected frame bounding box |
 
 ## Export Format
 
-### Individual PNGs
+Two formats are available in the Export dialog:
+
+### Individual PNGs + manifest.json
 
 Each frame is exported as an RGBA PNG with the background colour replaced by full transparency. Optional sub-folder organisation:
 
@@ -125,9 +133,13 @@ output/
 └── hero/base/idle/south/hero-base-idle-south-001.png
 ```
 
+### Animated GIFs
+
+Exports one `.gif` per named sequence (e.g. `hero-base-walking-east.gif`). Playback speed is configurable (1–30 FPS) in the Export dialog. Useful for web, Discord, and tools that expect a single animation file per sequence.
+
 ### manifest.json
 
-Export always writes a character-focused manifest:
+The PNG export also writes a character-focused manifest:
 
 ```json
 {
